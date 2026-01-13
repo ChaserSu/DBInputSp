@@ -1,7 +1,7 @@
 import sys
 import importlib
 import os
-from config import current_scheme
+import signal
 from pypinyin import lazy_pinyin, Style
 
 # ===================== 新增：获取程序根路径（核心修改） =====================
@@ -18,10 +18,34 @@ def get_root_path():
         # 源码运行模式
         return os.path.dirname(os.path.abspath(__file__))
 
-# 拼接 method 目录路径，并加入系统模块搜索路径
+# ===================== 关键修改：将根路径加入模块搜索路径 =====================
 ROOT_PATH = get_root_path()
+# 将程序根目录加入sys.path，才能动态导入根目录下的config.py
+sys.path.append(ROOT_PATH)
+
+# 拼接 method 目录路径，并加入系统模块搜索路径
 METHOD_DIR = os.path.join(ROOT_PATH, "method")
 sys.path.append(METHOD_DIR)
+
+# ===================== 新增：动态加载config配置文件 =====================
+def load_config():
+    """
+    动态加载根目录下的config.py
+    返回：current_scheme 配置项
+    """
+    try:
+        # 动态导入config模块（从ROOT_PATH目录导入）
+        config_module = importlib.import_module("config")
+        # 检查是否存在current_scheme配置项
+        if not hasattr(config_module, "current_scheme"):
+            raise AttributeError("current_scheme")
+        return config_module.current_scheme
+    except ModuleNotFoundError:
+        print(f"错误：未找到 config.py 文件，请检查 {ROOT_PATH}/config.py")
+        sys.exit(1)
+    except AttributeError as e:
+        print(f"错误：config.py 缺少配置项 {e}")
+        sys.exit(1)
 
 # ===================== 1. 动态加载双拼方案（修改导入逻辑） =====================
 def load_scheme(scheme_name):
@@ -177,54 +201,50 @@ def save_result(result, file_path=None, func_name=""):
     except Exception as e:
         print(f"❌ 保存失败：{e}")
 
-# ===================== 5. 功能执行逻辑（添加零声母参数传参） =====================
-def run_function(choice, shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path=None):
-    """
-    执行选择的功能，处理输入和保存
-    :param choice: 功能选择（1/2/3）
-    :param ling_shengmu: 零声母表
-    :param file_path: 拖放的文件路径（None表示手动输入）
-    :return: 是否继续运行
-    """
+# ===================== 5. 辅助函数：判断输入内容类型 =====================
+def is_chinese(text):
+    """判断输入文本是否包含中文"""
+    for char in text:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+    return False
+
+def is_english(text):
+    """判断输入文本是否为英文（仅字母和单引号）"""
+    text = text.strip()
+    if not text:
+        return False
+    for char in text:
+        if not (char.isalpha() or char == "'"):
+            return False
+    return True
+
+# ===================== 6. 新功能执行逻辑 =====================
+def auto_run(input_content, shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path=None):
+    """根据输入内容自动执行对应功能"""
     func_name = ""
     result = ""
-    input_content = ""
-
-    # 1. 读取输入内容（文件拖放 / 手动输入）
-    if file_path:
-        # 拖放文件模式：读取文件内容
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                input_content = f.read().strip()
-            print(f"\n📄 读取文件内容：\n{input_content}\n")
-        except Exception as e:
-            print(f"❌ 读取文件失败：{e}")
-            return True
-
-    # 2. 执行对应功能
-    if choice == "1":
-        func_name = "正查"
-        # 获取输入内容
-        if not input_content:
-            input_content = input("请输入要转换的中文：").strip()
-        # 执行转换：传入零声母表
-        result = forward_convert(input_content, shengmu, yunmu, ling_shengmu)
-        print(f"\n【{func_name}结果】：\n{result}")
-
-    elif choice == "2":
-        func_name = "反查"
-        if not input_content:
-            input_content = input("请输入要转换的双拼编码（用'分隔）：").strip()
-        # 传入 ling_shengmu 参数
-        result = reverse_convert(input_content, shengmu, yunmu, ling_shengmu, reverse_map)
-        print(f"\n【{func_name}结果】：\n{result}")
-
-    elif choice == "3":
+    
+    if not input_content.strip():
+        # 直接回车：执行查表
         func_name = "查表"
         result = show_key_table(key_map)
-        print(f"\n【{func_name}结果】：\n{result}")
+    elif is_chinese(input_content):
+        # 输入中文：执行正查
+        func_name = "正查"
+        result = forward_convert(input_content, shengmu, yunmu, ling_shengmu)
+    elif is_english(input_content):
+        # 输入英文：执行反查
+        func_name = "反查"
+        result = reverse_convert(input_content, shengmu, yunmu, ling_shengmu, reverse_map)
+    else:
+        print("❌ 输入格式不支持！仅支持中文、双拼编码（英文+单引号）")
+        return True
 
-    # 3. 选择是否保存结果
+    # 输出结果
+    print(f"\n【{func_name}结果】：\n{result}")
+
+    # 选择是否保存结果
     if result and result != "输入不能为空":
         if file_path:
             # 拖放文件：默认保存
@@ -236,36 +256,51 @@ def run_function(choice, shengmu, yunmu, ling_shengmu, key_map, reverse_map, fil
             save_choice = input(f"\n是否保存{func_name}结果？（默认否，输入y保存）：").strip().lower()
             if save_choice == "y":
                 save_result(result, func_name=func_name)
-    
-    # 4. 返回功能首页
     return True
 
-# ===================== 6. 主循环（添加零声母参数传参） =====================
+# ===================== 7. 信号处理：Ctrl+C退出 =====================
+def signal_handler(sig, frame):
+    """捕获Ctrl+C信号，优雅退出"""
+    print("\n\n👋 程序已退出")
+    sys.exit(0)
+
+# ===================== 8. 主循环（核心修改：自动判断输入类型） =====================
 def main_loop(shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path=None):
-    """程序主循环：持续显示功能菜单"""
+    """程序主循环：自动根据输入类型执行功能"""
+    # 注册Ctrl+C信号处理器
+    signal.signal(signal.SIGINT, signal_handler)
+
+    if file_path:
+        # 拖放文件模式：读取文件内容并自动判断执行
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                input_content = f.read().strip()
+            print(f"\n📄 读取文件内容：\n{input_content}\n")
+            auto_run(input_content, shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path)
+        except Exception as e:
+            print(f"❌ 读取文件失败：{e}")
+        return
+
+    # 手动输入模式
+    print("===== 双拼转换工具v0.0.3=====")
+    print("📌 输入中文 → 正查双拼编码 | 输入英文编码(以'间隔) → 以双拼编码反查全拼编码 | 直接回车 → 查表 | Ctrl+C → 退出")
     while True:
-        print("\n===== 双拼转换工具 ======")
-        print("1. 正查（中文 → 双拼编码）")
-        print("2. 反查（双拼编码 → 全拼）")
-        print("3. 查表（查看键位对照表）")
-        print("0. 退出程序")
-        choice = input("\n请选择功能（0-3）：").strip()
+        try:
+            input_content = input("\n请输入内容：").strip()
+            auto_run(input_content, shengmu, yunmu, ling_shengmu, key_map, reverse_map)
+        except KeyboardInterrupt:
+            # 兼容Ctrl+C捕获
+            signal_handler(signal.SIGINT, None)
 
-        if choice == "0":
-            print("👋 程序已退出")
-            break
-        elif choice in ["1", "2", "3"]:
-            # 调用run_function时传入零声母表
-            run_function(choice, shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path)
-        else:
-            print("❌ 无效选择，请输入 0-3 之间的数字")
-
-# ===================== 7. 程序入口 =====================
+# ===================== 9. 程序入口 =====================
 if __name__ == "__main__":
-    # 加载双拼方案
+    # 第一步：动态加载根目录下的config.py，获取当前方案名
+    current_scheme = load_config()
+    # 第二步：根据配置加载对应的双拼方案
     shengmu, yunmu, ling_shengmu, key_map, reverse_map = load_scheme(current_scheme)
     print(f"✅ 成功加载双拼方案：{current_scheme}")
-    print(f"✅ 当前配置文件目录：{METHOD_DIR}") # 调试用，可删除
+    print(f"✅ 当前config目录：{ROOT_PATH}") # 调试用，可删除
+    print(f"✅ 当前method目录：{METHOD_DIR}") # 调试用，可删除
 
     # 判断执行方式：文件拖放 or 手动输入
     file_path = None
@@ -277,5 +312,5 @@ if __name__ == "__main__":
             print(f"❌ 无效文件路径：{file_path}")
             sys.exit(1)
 
-    # 启动主循环：传入零声母表
+    # 启动主循环
     main_loop(shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path)
