@@ -282,7 +282,8 @@ def main_loop(shengmu, yunmu, ling_shengmu, key_map, reverse_map, file_path=None
         return
 
     # 手动输入模式
-    print("===== 双拼转换工具v0.0.3=====")
+    print("https://github.com/ChaserSu/DBInputSp")
+    print("===== 双拼转换工具v0.0.4=====")
     print("📌 输入中文 → 正查双拼编码 | 输入英文编码(以'间隔) → 以双拼编码反查全拼编码 | 直接回车 → 查表 | Ctrl+C → 退出")
     while True:
         try:
