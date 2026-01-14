@@ -30,14 +30,20 @@ SHENGMU = {
 YUNMU = {
     "iu": "Q", 
     "ei": "W", 
+    "e": "E", 
     "uan": "R", 
+    "üan": "R", 
+    "van": "R", 
     "ue": "T", 
+    "üe": "T",
+    "ve": "T",
     "un": "Y",
+    "ün": "Y",
+    "vn": "Y",
     "u": "U", 
     "i": "I",
     "o": "O", 
     "uo": "O", 
-    "e": "E", 
     "ie": "P", 
     "a": "A", 
     "ong": "S", 
@@ -57,7 +63,6 @@ YUNMU = {
     "ao": "C",
     "ui": "V",
     "ü": "V",
-    "üe": "T",
     "v": "V",
     "in": "B",
     "iao": "N",
@@ -66,9 +71,18 @@ YUNMU = {
 
 # 3. 零声母韵母（无生母时的独立韵母映射）
 LING_SHENGMU = {
-    "a": "AA", "o": "OO", "e": "EE", "ai": "AAI", "ei": "EEI",
-    "ao": "AAO", "ou": "OOU", "an": "AAN", "en": "EEN",
-    "ang": "AANG", "eng": "EENG", "er": "EER"
+    "a": "AA", 
+    "o": "OO", 
+    "e": "EE", 
+    "ai": "AI", 
+    "ei": "EI",
+    "ao": "AO", 
+    "ou": "OU", 
+    "an": "AN", 
+    "en": "EN",
+    "ang": "AH", 
+    "eng": "EG", 
+    "er": "ER"
 }
 
 # 4. 完整键位映射表（用于查表功能，合并声母+韵母+零声母）
