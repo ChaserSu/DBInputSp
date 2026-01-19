@@ -1,3 +1,3 @@
-# 指定当前使用的双拼方案（对应method目录下的文件名）
-current_scheme = "xiaohe"
-#current_scheme = "ziranma"
+# 格式：编号（≥1的正整数）+空格+双拼方案（method目录下文件名）
+1 xiaohe
+2 ziranma
