@@ -210,8 +210,18 @@ def print_usage_guide():
     max_scheme_num = sorted_nums[-1] if sorted_nums else 1
     num_range = f"{min_scheme_num}-{max_scheme_num}" if len(sorted_nums) > 1 else f"{min_scheme_num}"
     
+    # 获取默认方案名称
+    default_scheme_name = SCHEME_LIST.get(DEFAULT_SCHEME_NUM, "")
+    
+    # 获取历史记录当前状态
+    history_status = "已开启" if HISTORY_ENABLE == 1 else "已关闭"
+    
+    # 获取history.txt行数和clrhis值
+    history_line_count = count_file_lines(HISTORY_FILE_PATH)
+    clrhis_value = CLRHIS_LINE_NUM
+    
     # 核心还原：移除标题上方的空行，输入?时无多余空行
-    print(f"{COLOR_BOLD}===== 双拼转换工具 v0.0.17（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
+    print(f"{COLOR_BOLD}===== 双拼转换工具 v0.0.18（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
     print(f"{COLOR_BOLD}【参与开发】{COLOR_RESET}苏鱼鱼、小川、豆包（doubao.com）")
     print(f"{COLOR_BOLD}【GitHub】{COLOR_RESET}https://github.com/ChaserSu/DBInputSp")
     print(f"{COLOR_BOLD}【可用方案】{COLOR_RESET}")
@@ -222,13 +232,13 @@ def print_usage_guide():
             print(f"{COLOR_BOLD}  {num} → {name}{is_current}{COLOR_RESET}")
         else:
             print(f"  {num} → {name}{is_current}")
-    print(f"{COLOR_BOLD}【输入内容】{COLOR_RESET}")
+    print(f"{COLOR_BOLD}【双拼转换】{COLOR_RESET}")  # 修改：【输入内容】替换为【双拼转换】
     print(f"🔎 {COLOR_BLUE_BOLD}输入中文回车{COLOR_RESET} → {COLOR_GREEN_BOLD}正查双拼{COLOR_RESET}")
     print(f"🔍 {COLOR_GREEN_BOLD}输入编码回车{COLOR_RESET} → {COLOR_RED_BOLD}反查全拼{COLOR_RESET}")
     print("🔀 混合输入回车 → 分行处理")
     print(f"{COLOR_BOLD}【切换方案】{COLOR_RESET}")
     print(f"📋 输入“@”回车 → 显示可用方案")
-    print(f"🎯 输入“@方案名”回车，例如“@XXX”回车 → 切换对应方案")
+    print(f"🎯 输入“@方案名”回车，例如“@{default_scheme_name}”回车 → 切换对应方案")  # 修改：XXX替换为默认方案名
     print(f"🔖 输入“!”或“！”回车 → 显示当前方案序号及名称")
     print(f"📋 输入“0”回车 → 查当前方案编码表")
     print(f"🔢 输入数字{num_range}回车 → 切换对应方案")
@@ -239,8 +249,8 @@ def print_usage_guide():
     print(f"⭐ 输入“*”回车 → 切换序号为{DEFAULT_SCHEME_NUM}的方案（默认）")  # emoji与文字间一个空格
     print(f"{COLOR_BOLD}【其他操作】{COLOR_RESET}")
     print("🧹 输入“.”回车 → 清空屏幕")
-    print("🕒 输入“%”回车 → 开/关历史")
-    print("🗑️ 输入“>”回车 → 手动清空历史")
+    print(f"🕒 输入“%”回车 → 开/关历史（当前{history_status}）")  # 修改：增加历史状态备注
+    print(f"🗑️ 输入“>”回车 → 手动清空历史（当前history.txt有{history_line_count}条，达到{clrhis_value}条后自动清空）")  # 修改：增加历史文件行数和clrhis备注
     print("📂 输入“#”回车 → 打开当前config目录")
     print("🗂️ 输入“$”回车 → 打开当前method目录")
     print("❓ 输入“?”或“？”回车 → 显示本指南")
@@ -265,8 +275,10 @@ def print_scheme_only():
     min_scheme_num = sorted_nums[0] if sorted_nums else 1
     max_scheme_num = sorted_nums[-1] if sorted_nums else 1
     num_range = f"{min_scheme_num}-{max_scheme_num}" if len(sorted_nums) > 1 else f"{min_scheme_num}"
+    # 获取默认方案名称
+    default_scheme_name = SCHEME_LIST.get(DEFAULT_SCHEME_NUM, "")
     print(f"🔢 输入数字{num_range}回车 → 切换对应方案")
-    print(f"🎯 输入“@方案名”回车，例如“@{SCHEME_LIST[DEFAULT_SCHEME_NUM]}”回车 → 切换对应方案")
+    print(f"🎯 输入“@方案名”回车，例如“@{default_scheme_name}”回车 → 切换对应方案")  # 修改：XXX替换为默认方案名
     print()  # 单行空行
     # 写入历史记录（非编码相关，会被过滤）
     write_history("显示可用方案列表")
@@ -892,7 +904,7 @@ def main_loop(file_path=None):
     switch_scheme(DEFAULT_SCHEME_NUM)
 
     # 程序启动提示
-    start_msg = "🚀 双拼转换工具 v0.0.17（首次使用请输入“?”查看使用指南）"
+    start_msg = "🚀 双拼转换工具 v0.0.18（首次使用请输入“?”查看使用指南）"
     print(start_msg)
     write_history("程序启动")
 
