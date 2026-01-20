@@ -1,0 +1,98 @@
+# 智能ABC双拼 核心配置（所有方案相关内容均在此定义）
+# 1. 声母表（短拼，优先级高于韵母）
+SHENGMU = {
+    "b": "B", 
+    "p": "P", 
+    "m": "M", 
+    "f": "F",
+    "d": "D", 
+    "t": "T", 
+    "n": "N", 
+    "l": "L",
+    "g": "G", 
+    "k": "K", 
+    "h": "H",
+    "j": "J", 
+    "q": "Q", 
+    "x": "X",
+    "zh": "A", 
+    "ch": "E", 
+    "sh": "V",
+    "r": "R", 
+    "z": "Z", 
+    "c": "C", 
+    "s": "S",
+    "y": "Y", 
+    "w": "W"
+}
+
+# 2. 韵母表（长拼，需匹配拼音剩余部分）
+YUNMU = {
+    "iu": "R", 
+    "ei": "Q", 
+    "e": "E", 
+    "uan": "P", 
+    "üan": "P", 
+    "van": "P", 
+    "ue": "M", 
+    "üe": "M",
+    "ve": "M",
+    "un": "N",
+    "ün": "N",
+    "vn": "N",
+    "u": "U", 
+    "i": "I",
+    "o": "O", 
+    "uo": "O", 
+    "ie": "X", 
+    "a": "A", 
+    "ong": "S", 
+    "iong": "S", 
+    "ai": "L", 
+    "en": "F",
+    "eng": "G",
+    "ang": "H",
+    "an": "J",
+    "uai": "C",
+    "ing": "Y",
+    "iang": "T",
+    "uang": "T",
+    "ou": "B",
+    "ia": "D",
+    "ua": "D",
+    "ao": "K",
+    "ui": "M",
+    "ü": "V",
+    "v": "V",
+    "in": "C",
+    "iao": "Z"
+}
+
+# 3. 零声母韵母（无生母时的独立韵母映射）
+LING_SHENGMU = {
+    "a": "OA", 
+    "o": "OO", 
+    "e": "OE", 
+    "ai": "OL", 
+    "ei": "OQ",
+    "ao": "OK", 
+    "ou": "OB", 
+    "an": "OJ", 
+    "en": "OF",
+    "ang": "OH", 
+    "eng": "OG", 
+    "er": "OR"
+}
+
+# 4. 完整键位映射表（用于查表功能，合并声母+韵母+零声母）
+KEY_MAP = {}
+KEY_MAP.update(SHENGMU)
+KEY_MAP.update(YUNMU)
+KEY_MAP.update(LING_SHENGMU)
+
+# 5. 反向映射表（用于反查：键位→拼音，一个键位可能对应多个拼音）
+REVERSE_MAP = {}
+for pinyin, key in KEY_MAP.items():
+    if key not in REVERSE_MAP:
+        REVERSE_MAP[key] = []
+    REVERSE_MAP[key].append(pinyin)

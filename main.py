@@ -3,6 +3,7 @@ import importlib
 import os
 import signal
 import re
+import webbrowser
 from datetime import datetime
 from pypinyin import lazy_pinyin, Style
 
@@ -54,11 +55,12 @@ def filter_ansi_chars(text):
     # 移除ANSI控制码
     ansi_pattern = re.compile(r'\033\[[0-9;]*m')
     text = ansi_pattern.sub('', text)
-    # 移除指定表情符号
-    emoji_pattern = re.compile(r'[🔎🔍🔀📋🎯🔖🔢⏮️🔽🔼⏭️▶️🧹❓🗑️🚶🕒📂🗂️⭐]')
+    # 移除指定表情符号，添加🔴到列表中
+    emoji_pattern = re.compile(r'[🔎🔍🔀📋🎯🔖🔢⏮️🔽🔼⏭️▶️🧹❓🗑️🚶🕒📂🗂️⭐🔴]')
     text = emoji_pattern.sub('', text)
     # 去除首尾空格
     return text.strip()
+
 
 def get_formatted_datetime():
     """获取格式化的时间字符串：26-01-20 08:47:22（年取后两位，月日补零）"""
@@ -221,7 +223,7 @@ def print_usage_guide():
     clrhis_value = CLRHIS_LINE_NUM
     
     # 核心还原：移除标题上方的空行，输入?时无多余空行
-    print(f"{COLOR_BOLD}===== 双拼转换工具 v0.0.18（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
+    print(f"{COLOR_BOLD}===== 双拼转换工具 v0.0.19（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
     print(f"{COLOR_BOLD}【参与开发】{COLOR_RESET}苏鱼鱼、小川、豆包（doubao.com）")
     print(f"{COLOR_BOLD}【GitHub】{COLOR_RESET}https://github.com/ChaserSu/DBInputSp")
     print(f"{COLOR_BOLD}【可用方案】{COLOR_RESET}")
@@ -253,6 +255,7 @@ def print_usage_guide():
     print(f"🗑️ 输入“>”回车 → 手动清空历史（当前history.txt有{history_line_count}条，达到{clrhis_value}条后自动清空）")  # 修改：增加历史文件行数和clrhis备注
     print("📂 输入“#”回车 → 打开当前config目录")
     print("🗂️ 输入“$”回车 → 打开当前method目录")
+    print("🌐 输入“=”回车 → 打开双拼键位表和练习页面（来自 https://github.com/BlueSky-07/Shuang）")
     print("❓ 输入“?”或“？”回车 → 显示本指南")
     print("🚶 Ctrl+C → 退出程序")
     # 核心新增：在使用指南最后一行后添加空行（分隔输入提示符）
@@ -705,12 +708,13 @@ def is_chinese(text):
     return False
 
 def is_english(text):
-    """判断输入文本是否为英文（仅字母和单引号）"""
+    """判断输入文本是否为英文（仅ASCII字母、单引号和分号）"""
     text = text.strip()
     if not text:
         return False
     for char in text:
-        if not (char.isalpha() or char == "'"):
+        # 仅允许ASCII字母、单引号和分号（分号在某些双拼方案中用于编码）
+        if not ((65 <= ord(char) <= 90 or 97 <= ord(char) <= 122) or char == "'" or char == ";"):
             return False
     return True
 
@@ -820,6 +824,23 @@ def auto_run(input_content):
         open_directory(METHOD_DIR)
         return True
     
+    # 新增：输入=唤起浏览器打开双拼练习页面
+    if input_content.strip() == "=":
+        html_path = os.path.join(ROOT_PATH, "Shuang_6.0", "index.html")
+        # 转换为file://协议格式以便浏览器打开
+        file_url = f"file:///{html_path.replace(os.sep, '/')}"
+        try:
+            webbrowser.open(file_url)
+            tip_msg = f"🌐 已在浏览器中打开：{html_path}（来自 https://github.com/BlueSky-07/Shuang）"
+            print(tip_msg)
+            print()  # 单行空行
+            write_history(tip_msg)
+        except Exception as e:
+            err_msg = f"❌ 打开浏览器失败：{e}"
+            print(err_msg)
+            write_history(err_msg)
+        return True
+    
     # 检查是否是方案切换指令（单个数字）
     if len(input_segments) == 1 and is_scheme_number(input_segments[0]):
         scheme_num = int(input_segments[0])
@@ -862,7 +883,7 @@ def auto_run(input_content):
             write_history(reverse_msg, is_output=True)
         else:
             # 无效片段（非中文/非纯编码/非方案编号）
-            invalid_msg = f"🔎 {seg}【提示】：非有效中文/双拼编码/方案编号，跳过处理"
+            invalid_msg = f"❌ 错误：内容“{seg}”不属于有效中文/编码/指令，请输入“?”或“？”回车查看指南"
             print(invalid_msg)
             write_history(invalid_msg)
     return True
@@ -904,7 +925,7 @@ def main_loop(file_path=None):
     switch_scheme(DEFAULT_SCHEME_NUM)
 
     # 程序启动提示
-    start_msg = "🚀 双拼转换工具 v0.0.18（首次使用请输入“?”查看使用指南）"
+    start_msg = "🚀 双拼转换工具 v0.0.19（首次使用请输入“?”或“？”回车查看指南）"
     print(start_msg)
     write_history("程序启动")
 
