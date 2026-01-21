@@ -9,7 +9,8 @@
 
 如果你发现了漏网之鱼或者意料之外的输出，可以手动添加到过滤表中，也可以在issues里面提醒我们
 
-<img width="822" height="371" alt="image" src="https://github.com/user-attachments/assets/b50afbd6-1999-4e77-9953-0c2df9499b09" />
+<img width="846" height="325" alt="image" src="https://github.com/user-attachments/assets/1bef6b04-cef6-4c69-b1de-35b700ff2fec" />
+
 
 目前method/添加了主流的双拼方案，你可以自己在method文件夹仿照示例文件，自己添加其他双拼文件，并且在config.py里面登记。
 
