@@ -4,7 +4,12 @@
 - 1、正查：把文字转化为双拼编码
 - 2、反查：把双拼编码转换成拼音
 - 3、查表：输出完整双拼对应键位表
-- 
+
+现在添加了过滤器的内容，我们遍历了所有声母（包括零声母）+韵母的组合，从中反选了具有候选词含义的组合，然后添加到config.py中的过滤表
+如果你发现了漏网之鱼或者意料之外的输出，可以手动添加到过滤表中，也可以在issues里面提醒我们
+<img width="822" height="371" alt="image" src="https://github.com/user-attachments/assets/b50afbd6-1999-4e77-9953-0c2df9499b09" />
+
+
 <img width="738" height="762" alt="image" src="https://github.com/user-attachments/assets/4600408a-d1f1-4302-9f14-046cafbfb010" />
 
 
