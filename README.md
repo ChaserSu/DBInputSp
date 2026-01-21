@@ -11,7 +11,7 @@
 
 <img width="822" height="371" alt="image" src="https://github.com/user-attachments/assets/b50afbd6-1999-4e77-9953-0c2df9499b09" />
 
-目前method/添加了小鹤双拼和自然码的示例方案xiaohe.py和ziranma.py，你可以自己在method文件夹仿照示例文件，自己添加其他双拼文件，并且在config.py里面修改方案名称指向你新建的方案。
+目前method/添加了主流的双拼方案，你可以自己在method文件夹仿照示例文件，自己添加其他双拼文件，并且在config.py里面登记。
 
 如果你希望从源代码运行，请下载https://github.com/BlueSky-07/Shuang/releases/tag/6.0
 
