@@ -7,11 +7,15 @@ import webbrowser
 from datetime import datetime
 from pypinyin import lazy_pinyin, Style
 
+# 导入更新检查和下载函数
+from update import check_update, download_latest_version
+
 # ===================== 修复：ANSI颜色/加粗控制码（核心修正COLOR_RED_BOLD） =====================
 # 样式说明：\033[1m 加粗 | \033[31m 红色 | \033[32m 绿色 | \033[34m 蓝色 | \033[0m 重置样式
 COLOR_BLUE_BOLD = "\033[1;34m"   # 蓝色加粗（用户输入的中文）
 COLOR_RED_BOLD = "\033[1;31m"    # 修复：原错误写法是"\033[1m;31m"，多了一个分号导致乱码
 COLOR_GREEN_BOLD = "\033[1;32m"  # 绿色加粗（双拼编码/对勾）
+COLOR_YELLOW_BOLD = "\033[1;33m" # 黄色加粗（默认方案标记）
 COLOR_BOLD = "\033[1m"           # 仅加粗（无颜色）
 COLOR_RESET = "\033[0m"          # 重置样式
 
@@ -24,6 +28,8 @@ DEFAULT_SCHEME_NUM = 1  # 新增：默认方案编号（从config读取）
 HISTORY_ENABLE = 0  # 新增：历史记录开关（0/1）
 CLRHIS_LINE_NUM = 0  # 新增：历史记录清除阈值行数
 HISTORY_FILE_PATH = ""  # 新增：历史记录文件路径
+AUTOUPDATE_ENABLE = 0  # 新增：自动检查更新开关（0/1）
+TOOL_VERSION = "v0.0.19"  # 新增：工具版本号（从config读取）
 
 # ===================== 新增：清屏函数 =====================
 def clear_screen():
@@ -55,11 +61,12 @@ def filter_ansi_chars(text):
     # 移除ANSI控制码
     ansi_pattern = re.compile(r'\033\[[0-9;]*m')
     text = ansi_pattern.sub('', text)
-    # 移除指定表情符号
-    emoji_pattern = re.compile(r'[🔎🔍🔀📋🎯🔖🔢⏮️🔽🔼⏭️▶️🧹❓🗑️🚶🕒📂🗂️⭐]')
+    # 移除指定表情符号，添加🔴到列表中
+    emoji_pattern = re.compile(r'[🔎🔍🔀📋🎯🔖🔢⏮️🔽🔼⏭️▶️🧹❓🗑️🚶🕒📂🗂️⭐🔴]')
     text = emoji_pattern.sub('', text)
     # 去除首尾空格
     return text.strip()
+
 
 def get_formatted_datetime():
     """获取格式化的时间字符串：26-01-20 08:47:22（年取后两位，月日补零）"""
@@ -87,7 +94,7 @@ def write_history(content, is_input=False, is_output=False):
         "用户输入：-", "用户输入：\\", "用户输入：*", "用户输入：.", "用户输入：?",
         "用户输入：？", "用户输入：!", "用户输入：！", "用户输入：@", "用户输入：>",
         "用户输入：0", "程序启动", "👋 程序已退出", "📄 读取文件内容",
-        "用户输入：%", "用户输入：#", "用户输入：$", "用户输入：&",
+        "用户输入：%", "用户输入：#", "用户输入：$",
         # 过滤数字切换方案的输入
         "用户输入：1", "用户输入：2", "用户输入：3", "用户输入：4", "用户输入：5",
         "用户输入：6", "用户输入：7", "用户输入：8", "用户输入：9"
@@ -163,18 +170,61 @@ def toggle_history_switch():
         
         # 提示信息
         status = "开启" if HISTORY_ENABLE == 1 else "关闭"
-        # 检查history.txt是否存在
-        history_file_exists = os.path.exists(HISTORY_FILE_PATH)
-        if HISTORY_ENABLE == 1 and not history_file_exists:
-            tip_msg = f"🕒 历史记录功能已{status}（config.py中history={HISTORY_ENABLE}，history.txt文件不存在，双拼转换时会自动创建）"
-        else:
-            tip_msg = f"🕒 历史记录功能已{status}（config.py中history={HISTORY_ENABLE}）"
+        tip_msg = f"🕒 历史记录功能已{status}（config.py中history={HISTORY_ENABLE}）"
         print(tip_msg)
         print()  # 单行空行
         write_history(tip_msg)
         return True
     except Exception as e:
         err_msg = f"❌ 修改历史记录开关失败：{e}"
+        print(err_msg)
+        write_history(err_msg)
+        return False
+
+def set_autoupdate_switch(value):
+    """设置启动时自动检查更新开关（修改config.py中的autoupdate值）
+    :param value: 0或1，要设置的值
+    """
+    global AUTOUPDATE_ENABLE
+    config_path = os.path.join(ROOT_PATH, "config.py")
+    
+    try:
+        # 读取原有配置
+        with open(config_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        # 修改autoupdate行
+        new_lines = []
+        autoupdate_updated = False
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line.startswith("autoupdate="):
+                # 设置为指定值
+                new_val = str(value)
+                new_lines.append(f"autoupdate={new_val}\n")
+                AUTOUPDATE_ENABLE = value
+                autoupdate_updated = True
+            else:
+                new_lines.append(line)
+        
+        # 如果没有找到autoupdate行，追加一行
+        if not autoupdate_updated:
+            new_lines.append(f"autoupdate={value}\n")
+            AUTOUPDATE_ENABLE = value
+        
+        # 写入修改后的配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        
+        # 提示信息
+        status = "开启" if AUTOUPDATE_ENABLE == 1 else "关闭"
+        tip_msg = f"🔄 启动时自动检查更新功能已{status}（config.py中autoupdate={AUTOUPDATE_ENABLE}）"
+        print(tip_msg)
+        print()  # 单行空行
+        write_history(tip_msg)
+        return True
+    except Exception as e:
+        err_msg = f"❌ 修改自动更新开关失败：{e}"
         print(err_msg)
         write_history(err_msg)
         return False
@@ -186,7 +236,7 @@ def open_directory(dir_path):
         if os.name == 'nt' and os.path.exists(dir_path):
             os.startfile(dir_path)  # Windows特有
             if dir_path == ROOT_PATH:
-                tip_msg = f"📂 已打开当前目录：{dir_path}"
+                tip_msg = f"📂 已打开config目录：{dir_path}"
             elif dir_path == METHOD_DIR:
                 tip_msg = f"🗂️ 已打开method目录：{dir_path}"
             else:
@@ -194,7 +244,7 @@ def open_directory(dir_path):
             print(tip_msg)
         else:
             if dir_path == ROOT_PATH:
-                tip_msg = f"⚠️  仅支持Windows系统打开当前目录"
+                tip_msg = f"⚠️  仅支持Windows系统打开config目录"
             elif dir_path == METHOD_DIR:
                 tip_msg = f"⚠️  仅支持Windows系统打开method目录"
             else:
@@ -204,33 +254,6 @@ def open_directory(dir_path):
         write_history(tip_msg)
     except Exception as e:
         err_msg = f"❌ 打开目录失败：{e}"
-        print(err_msg)
-        write_history(err_msg)
-
-# ===================== 新增：打开history.txt文件函数 =====================
-def open_history_file():
-    """打开history.txt文件，不存在则创建"""
-    try:
-        history_file_exists = os.path.exists(HISTORY_FILE_PATH)
-        if not history_file_exists:
-            # 创建空文件
-            with open(HISTORY_FILE_PATH, "w", encoding="utf-8") as f:
-                f.write("")
-            tip_msg = f"⚠️ 注意：当前目录下无history.txt文件，已创建空文件"
-        else:
-            # 打开文件
-            if os.name == 'nt':
-                os.startfile(HISTORY_FILE_PATH)
-            else:
-                # 非Windows系统尝试用默认程序打开
-                import subprocess
-                subprocess.run(['open' if sys.platform == 'darwin' else 'xdg-open', HISTORY_FILE_PATH])
-            tip_msg = f"📝 已打开history.txt文件：{os.path.abspath(HISTORY_FILE_PATH)}"
-        print(tip_msg)
-        print()  # 单行空行
-        write_history(tip_msg)
-    except Exception as e:
-        err_msg = f"❌ 打开history.txt文件失败：{e}"
         print(err_msg)
         write_history(err_msg)
 
@@ -250,22 +273,22 @@ def print_usage_guide():
     history_status = "已开启" if HISTORY_ENABLE == 1 else "已关闭"
     
     # 获取history.txt行数和clrhis值
-    history_file_exists = os.path.exists(HISTORY_FILE_PATH)
-    history_line_count = count_file_lines(HISTORY_FILE_PATH) if history_file_exists else 0
+    history_line_count = count_file_lines(HISTORY_FILE_PATH)
     clrhis_value = CLRHIS_LINE_NUM
     
     # 核心还原：移除标题上方的空行，输入?时无多余空行
-    print(f"{COLOR_BOLD}===== 双拼转换工具 v0.0.21（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
+    print(f"{COLOR_BOLD}===== 双拼转换工具 {TOOL_VERSION}（支持清屏+多方案切换+帮助查询）====={COLOR_RESET}")
     print(f"{COLOR_BOLD}【参与开发】{COLOR_RESET}苏鱼鱼、小川、豆包（doubao.com）")
     print(f"{COLOR_BOLD}【GitHub】{COLOR_RESET}https://github.com/ChaserSu/DBInputSp")
     print(f"{COLOR_BOLD}【可用方案】{COLOR_RESET}")
     for num, name in sorted(SCHEME_LIST.items()):
         # 核心修改：对当前激活的方案显示绿色对勾且整行加粗
         is_current = f"{COLOR_GREEN_BOLD} ✅{COLOR_RESET}" if name == CURRENT_SCHEME_NAME else ""
+        is_default = f" {COLOR_YELLOW_BOLD}(⭐ 默认){COLOR_RESET}" if num == DEFAULT_SCHEME_NUM else ""
         if name == CURRENT_SCHEME_NAME:
-            print(f"{COLOR_BOLD}  {num} → {name}{is_current}{COLOR_RESET}")
+            print(f"{COLOR_BOLD}  {num} → {name}{is_default}{is_current}{COLOR_RESET}")
         else:
-            print(f"  {num} → {name}{is_current}")
+            print(f"  {num} → {name}{is_default}{is_current}")
     print(f"{COLOR_BOLD}【双拼转换】{COLOR_RESET}")  # 修改：【输入内容】替换为【双拼转换】
     print(f"🔎 {COLOR_BLUE_BOLD}输入中文回车{COLOR_RESET} → {COLOR_GREEN_BOLD}正查双拼{COLOR_RESET}")
     print(f"🔍 {COLOR_GREEN_BOLD}输入编码回车{COLOR_RESET} → {COLOR_RED_BOLD}反查全拼{COLOR_RESET}")
@@ -273,35 +296,52 @@ def print_usage_guide():
     print(f"{COLOR_BOLD}【切换方案】{COLOR_RESET}")
     print(f"📋 输入“@”回车 → 显示可用方案")
     print(f"🎯 输入“@方案名”回车，例如“@{default_scheme_name}”回车 → 切换对应方案")  # 修改：XXX替换为默认方案名
+    print(f"⭐ 输入“@=数字”回车，例如“@={DEFAULT_SCHEME_NUM}”回车 → 设置为默认方案")
     print(f"🔖 输入“!”或“！”回车 → 显示当前方案序号及名称")
-#    print(f"📑 输入“0”回车 → 显示当前方案编码表")  # 修改：图标和描述
     print(f"🔢 输入数字{num_range}回车 → 切换对应方案")
-    print(f"⏮️ 输入“/”回车 → 切换序号为{min_scheme_num}的方案（首个）")  # emoji与文字间一个空格
-    print(f"🔽 输入“+”回车 → 切换下一个方案（循环）")
-    print(f"🔼 输入“-”回车 → 切换上一个方案（循环）")
-    print(f"⏭️ 输入“\\”回车 → 切换序号为{max_scheme_num}的方案（末个）")  # emoji与文字间一个空格
-    print(f"⭐ 输入“*”回车 → 切换序号为{DEFAULT_SCHEME_NUM}的方案（默认）")  # emoji与文字间一个空格
+    # 获取当前方案的下一个和上一个方案名称
+    current_num = get_current_scheme_num() if 'CURRENT_SCHEME_NAME' in globals() and CURRENT_SCHEME_NAME else DEFAULT_SCHEME_NUM
+    sorted_nums = sorted(SCHEME_LIST.keys())
+    current_idx = sorted_nums.index(current_num) if current_num in sorted_nums else 0
+    next_idx = (current_idx + 1) % len(sorted_nums)
+    prev_idx = (current_idx - 1) % len(sorted_nums)
+    
+    # 获取各方案的名称和编号
+    first_num = min_scheme_num
+    first_scheme_name = SCHEME_LIST[first_num]
+    last_num = max_scheme_num
+    last_scheme_name = SCHEME_LIST[last_num]
+    next_num = sorted_nums[next_idx]
+    next_scheme_name = SCHEME_LIST[next_num]
+    prev_num = sorted_nums[prev_idx]
+    prev_scheme_name = SCHEME_LIST[prev_num]
+    default_num = DEFAULT_SCHEME_NUM
+    default_scheme_name = SCHEME_LIST[default_num]
+    
+    print(f"⏮️ 输入“/”回车 → 切换序号为{first_num}的方案（首个：{first_num} {first_scheme_name}）")  # emoji与文字间一个空格
+    print(f"🔽 输入“+”回车 → 切换下一个方案（循环：{next_num} {next_scheme_name}）")
+    print(f"🔼 输入“-”回车 → 切换上一个方案（循环：{prev_num} {prev_scheme_name}）")
+    print(f"⏭️ 输入“\\”回车 → 切换序号为{last_num}的方案（末个：{last_num} {last_scheme_name}）")  # emoji与文字间一个空格
+    print(f"⭐ 输入“*”回车 → 切换序号为{default_num}的方案（默认：{default_num} {default_scheme_name}）")  # emoji与文字间一个空格
     print(f"{COLOR_BOLD}【其他操作】{COLOR_RESET}")
-    print("🧹 输入“.”回车 → 清空屏幕")
-    # 处理历史记录开关显示逻辑
-    if HISTORY_ENABLE == 1 and not history_file_exists:
-        print(f"🕒 输入“%”回车 → 开/关历史（当前已开启，history.txt文件不存在，双拼转换时会自动创建）")
-    else:
-        print(f"🕒 输入“%”回车 → 开/关历史（当前{history_status}）")  # 修改：增加历史状态备注
-    # 处理清空历史显示逻辑
-    if not history_file_exists:
-        print(f"🗑️ 输入“>”回车 → 手动清空历史（当前history.txt文件不存在，达到{clrhis_value}条后自动清空）")
-    else:
-        print(f"🗑️ 输入“>”回车 → 手动清空历史（当前history.txt有{history_line_count}条，达到{clrhis_value}条后自动清空）")
-    # 处理打开history.txt显示逻辑
-    if history_file_exists:
-        print(f"📝 输入“&”回车 → 打开history.txt文件")
-    else:
-        print(f"📝 输入“&”回车 → 打开history.txt文件（history.txt文件不存在，双拼转换时会自动创建）")
-    print(f"📂 输入“#”回车 → 打开当前目录")  # 修改：去掉config
-    print("🗂️ 输入“$”回车 → 打开当前method目录")
+    print("🧹 输入“.”或“。”回车 → 清空屏幕")
+    print(f"🕒 输入“%”回车 → 开/关历史（当前{history_status}）")  # 修改：增加历史状态备注
+    print(f"🗑️ 输入“>”或“》”回车 → 手动清空历史（当前history.txt有{history_line_count}条，达到{clrhis_value}条后自动清空）")  # 修改：增加历史文件行数和clrhis备注
+    print("📂 输入“#”回车 → 打开当前config目录")
+    print("🗂️ 输入“$”或“￥”回车 → 打开当前method目录")
     print("🌐 输入“=”回车 → 打开双拼键位表和练习页面（来自 https://github.com/BlueSky-07/Shuang）")
-    print("❓ 输入“?”或“？”回车 → 显示本指南")
+    
+    print(f"{COLOR_BOLD}【更新设置】{COLOR_RESET}")
+    print("🔍 输入“^”回车 → 手动检查更新")
+    print("📌 输入“~”回车 → 下载最新版本")
+    print(f"🔄 输入“^=0/1”回车 → 是否自动更新（当前：autoupdate={AUTOUPDATE_ENABLE}）")
+    
+    print(f"{COLOR_BOLD}【命令行调用】{COLOR_RESET}")
+    print(f"📟 python main.py \"豆包\" → 直接处理输入内容")
+    print(f"📟 DBInputSp.exe \"豆包\" → 可执行文件直接调用")
+    
+    print(f"{COLOR_BOLD}【帮助与退出】{COLOR_RESET}")
+    print(f"❓ 输入“?”或“？”回车 → 显示本指南")
     print("🚶 Ctrl+C → 退出程序")
     # 核心新增：在使用指南最后一行后添加空行（分隔输入提示符）
     print()
@@ -313,11 +353,12 @@ def print_scheme_only():
     print(f"{COLOR_BOLD}【可用方案】{COLOR_RESET}")
     for num, name in sorted(SCHEME_LIST.items()):
         is_current = f"{COLOR_GREEN_BOLD} ✅{COLOR_RESET}" if name == CURRENT_SCHEME_NAME else ""
+        is_default = f" {COLOR_YELLOW_BOLD}(⭐ 默认){COLOR_RESET}" if num == DEFAULT_SCHEME_NUM else ""
         # 核心修改：当前方案行加粗
         if name == CURRENT_SCHEME_NAME:
-            print(f"{COLOR_BOLD}  {num} → {name}{is_current}{COLOR_RESET}")
+            print(f"{COLOR_BOLD}  {num} → {name}{is_default}{is_current}{COLOR_RESET}")
         else:
-            print(f"  {num} → {name}{is_current}")
+            print(f"  {num} → {name}{is_default}{is_current}")
     # 添加Tips文字
     sorted_nums = sorted(SCHEME_LIST.keys())
     min_scheme_num = sorted_nums[0] if sorted_nums else 1
@@ -327,6 +368,7 @@ def print_scheme_only():
     default_scheme_name = SCHEME_LIST.get(DEFAULT_SCHEME_NUM, "")
     print(f"🔢 输入数字{num_range}回车 → 切换对应方案")
     print(f"🎯 输入“@方案名”回车，例如“@{default_scheme_name}”回车 → 切换对应方案")  # 修改：XXX替换为默认方案名
+    print(f"⭐ 输入“@=数字”回车，例如“@={DEFAULT_SCHEME_NUM}”回车 → 设置为默认方案")
     print()  # 单行空行
     # 写入历史记录（非编码相关，会被过滤）
     write_history("显示可用方案列表")
@@ -385,7 +427,7 @@ def switch_scheme_by_name(scheme_name):
             target_num = num
             break
     if target_num is None:
-        err_msg = f"❌ 错误：未找到名为“{scheme_name}”的方案，请检查当前目录下config.py中的配置"  # 修改提示
+        err_msg = f"❌ 错误：未找到名为“{scheme_name}”的方案，请检查config.py中的配置"
         print(err_msg)
         print()  # 错误提示后换行
         print_scheme_only()  # 打印可用方案列表
@@ -420,74 +462,100 @@ sys.path.append(METHOD_DIR)
 # 初始化历史记录文件路径
 HISTORY_FILE_PATH = os.path.join(ROOT_PATH, "history.txt")
 
+# 加载过滤表
+filter_table = []
+config_path = os.path.join(ROOT_PATH, "config.py")
+try:
+    # 读取config.py文件内容
+    with open(config_path, "r", encoding="utf-8") as f:
+        config_content = f.read()
+    
+    # 提取filter_table列表
+    import ast
+    # 找到filter_table的定义行
+    filter_start = config_content.find("filter_table = [")
+    if filter_start != -1:
+        # 提取列表内容
+        filter_content = config_content[filter_start:]
+        # 找到列表结束位置
+        filter_end = filter_content.find("]") + 1
+        if filter_end > 0:
+            filter_list_str = filter_content[:filter_end]
+            # 解析列表
+            filter_table = ast.literal_eval(filter_list_str.split("=")[1].strip())
+except Exception as e:
+    pass
+
 # ===================== 新增：读取config.py中的配置项 =====================
 def load_config():
-    """读取config.py中的方案列表、default、history、clrhis配置"""
+    """读取config.py中的方案列表、default、history、clrhis、version、autoupdate配置"""
     scheme_dict = {}
     default_num = 1
     history = 0
     clrhis = 0
+    version = "v0.0.19"  # 默认版本号
+    autoupdate = 0  # 默认不自动检查更新
     config_path = os.path.join(ROOT_PATH, "config.py")
     
     try:
         with open(config_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+            config_content = f.read()
         
-        # 解析每一行，过滤注释和空行
-        for line in lines:
-            line = line.strip()
-            # 跳过空行和注释行
-            if not line or line.startswith("#"):
-                continue
-            
-            # 解析default配置
-            if line.startswith("default="):
-                try:
-                    default_num = int(line.split("=")[1].strip())
-                except (ValueError, IndexError):
-                    print(f"⚠️  警告：config.py中default配置无效，使用默认值1")
-                    default_num = 1
-                continue
-            
-            # 解析history配置
-            if line.startswith("history="):
-                try:
-                    history = int(line.split("=")[1].strip())
-                    history = 1 if history == 1 else 0
-                except (ValueError, IndexError):
-                    print(f"⚠️  警告：config.py中history配置无效，使用默认值0")
-                    history = 0
-                continue
-            
-            # 解析clrhis配置
-            if line.startswith("clrhis="):
-                try:
-                    clrhis = int(line.split("=")[1].strip())
-                    clrhis = clrhis if clrhis >= 0 else 0
-                except (ValueError, IndexError):
-                    print(f"⚠️  警告：config.py中clrhis配置无效，使用默认值0")
-                    clrhis = 0
-                continue
-            
-            # 解析方案列表（格式：编号 方案名）
-            parts = line.split()
-            if len(parts) != 2:
-                print(f"⚠️  警告：config.py中无效行 '{line}'，格式应为 编号 方案名")
-                continue
-            
-            # 检查编号是否为≥1的正整数
-            try:
-                num = int(parts[0])
-                if num < 1:
-                    print(f"⚠️  警告：config.py中编号 '{num}' 无效，必须≥1")
-                    continue
-            except ValueError:
-                print(f"⚠️  警告：config.py中 '{parts[0]}' 不是有效数字")
-                continue
-            
-            scheme_name = parts[1]
-            scheme_dict[num] = scheme_name
+        import ast
         
+        # 解析scheme_dict字典
+        scheme_start = config_content.find("scheme_dict = {")
+        if scheme_start != -1:
+            # 提取字典内容
+            scheme_content = config_content[scheme_start:]
+            # 找到字典结束位置
+            scheme_end = scheme_content.find("}") + 1
+            if scheme_end > 0:
+                scheme_list_str = scheme_content[:scheme_end]
+                # 解析字典
+                scheme_dict = ast.literal_eval(scheme_list_str.split("=")[1].strip())
+        
+        # 解析其他配置项
+        # 解析version配置
+        version_match = re.search(r'version\s*=\s*["\'](.+?)["\']', config_content)
+        if version_match:
+            version = version_match.group(1)
+        
+        # 解析default配置
+        default_match = re.search(r'default\s*=\s*(\d+)', config_content)
+        if default_match:
+            default_num = int(default_match.group(1))
+        
+        # 解析history配置
+        history_match = re.search(r'history\s*=\s*(\d+)', config_content)
+        if history_match:
+            history = int(history_match.group(1))
+            history = 1 if history == 1 else 0
+        
+        # 解析clrhis配置
+        clrhis_match = re.search(r'clrhis\s*=\s*(\d+)', config_content)
+        if clrhis_match:
+            clrhis = int(clrhis_match.group(1))
+            clrhis = clrhis if clrhis >= 0 else 0
+        
+        # 解析autoupdate配置
+        autoupdate_match = re.search(r'autoupdate\s*=\s*(\d+)', config_content)
+        if autoupdate_match:
+            autoupdate = int(autoupdate_match.group(1))
+            autoupdate = 1 if autoupdate == 1 else 0
+        
+        # 验证scheme_dict是否有效
+        if not isinstance(scheme_dict, dict) or not scheme_dict:
+            print(f"❌ 错误：config.py中未找到有效双拼方案配置")
+            sys.exit(1)
+        
+        # 验证方案编号是否为≥1的正整数
+        for num in scheme_dict.keys():
+            if not isinstance(num, int) or num < 1:
+                print(f"⚠️  警告：config.py中编号 '{num}' 无效，必须≥1，已忽略")
+                del scheme_dict[num]
+        
+        # 重新检查scheme_dict是否为空
         if not scheme_dict:
             print(f"❌ 错误：config.py中未找到有效双拼方案配置")
             sys.exit(1)
@@ -497,7 +565,7 @@ def load_config():
             print(f"⚠️  警告：default={default_num} 不在有效方案编号中，使用第一个方案编号")
             default_num = sorted(scheme_dict.keys())[0]
         
-        return scheme_dict, default_num, history, clrhis
+        return scheme_dict, default_num, history, clrhis, version, autoupdate
     
     except FileNotFoundError:
         print(f"❌ 错误：未找到 config.py 文件，请检查 {config_path}")
@@ -505,6 +573,30 @@ def load_config():
     except Exception as e:
         print(f"❌ 读取config.py失败：{e}")
         sys.exit(1)
+
+# ===================== 新增：保存配置函数 =====================
+def save_config(new_default=None):
+    """保存配置到config.py文件"""
+    config_path = os.path.join(ROOT_PATH, "config.py")
+    
+    try:
+        # 读取当前配置内容
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_content = f.read()
+        
+        # 更新default配置
+        if new_default is not None:
+            # 使用正则表达式替换default值
+            config_content = re.sub(r'default\s*=\s*\d+', f'default={new_default}', config_content)
+        
+        # 写入更新后的配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(config_content)
+        
+        return True
+    except Exception as e:
+        print(f"❌ 保存config.py失败：{e}")
+        return False
 
 # ===================== 修改：加载指定双拼方案 =====================
 def load_scheme(scheme_name):
@@ -645,7 +737,7 @@ def forward_convert(chinese_str, shengmu_map, yunmu_map, ling_shengmu_map):
 
 def reverse_convert_single(code_str, shengmu_map, yunmu_map, ling_shengmu_map, reverse_map):
     """
-    反查单个双拼编码 → 全拼（修复：oo/aa/ee整串解析+结果列表追加）
+    反查单个双拼编码 → 全拼（修复：oo/aa/ee整串解析+结果列表追加+v→ü/ui完整映射+多结果输出）
     :param code_str: 单个双拼编码字符串（带'或无分隔符）
     :param shengmu_map: 声母表
     :param yunmu_map: 韵母表
@@ -667,26 +759,35 @@ def reverse_convert_single(code_str, shengmu_map, yunmu_map, ling_shengmu_map, r
     if "'" not in code_str and len(code_str.strip()) > 1:
         split_code = split_doupin_code(code_str, shengmu_map, ling_shengmu_map)
     
-    # 步骤2：构建反向映射
-    sm_key_to_py = {v.lower(): k for k, v in shengmu_map.items()}  # 键位→声母
-    ym_key_to_py = {v.lower(): k for k, v in yunmu_map.items()}    # 键位→韵母
-    ling_key_to_py = {v.lower(): k for k, v in ling_shengmu_map.items()}  # 键位→零声母韵母
+    # 步骤2：构建反向映射 - 修改为多值映射
+    sm_key_to_py = {v.lower(): k for k, v in shengmu_map.items()}  # 键位→声母（单值）
+    
+    # 构建韵母多值映射：键位→[韵母1, 韵母2, ...]
+    ym_key_to_py = {}
+    for py, key in yunmu_map.items():
+        key_lower = key.lower()
+        if key_lower not in ym_key_to_py:
+            ym_key_to_py[key_lower] = []
+        ym_key_to_py[key_lower].append(py)
+    
+    ling_key_to_py = {v.lower(): k for k, v in ling_shengmu_map.items()}  # 键位→零声母韵母（单值）
 
     code_list = split_code.split("'")
-    quangpin_list = []
+    all_quangpin_lists = [[]]  # 存储所有可能的全拼组合
 
     for code in code_list:
         code_item = code.lower().strip()
         if not code_item:
             continue
-        full_py = ""
-
+        
+        current_possibilities = []
+        
         # 匹配零声母重复字母（片段级）
         if code_item in zero_duplicate_map:
-            full_py = zero_duplicate_map[code_item]
+            current_possibilities = [zero_duplicate_map[code_item]]
         # 其次匹配零声母编码（单字符）
         elif code_item in ling_key_to_py:
-            full_py = ling_key_to_py[code_item]
+            current_possibilities = [ling_key_to_py[code_item]]
         # 匹配普通2位双拼编码（声母键+韵母键）
         elif len(code_item) == 2:
             sm_key = code_item[0]
@@ -694,20 +795,77 @@ def reverse_convert_single(code_str, shengmu_map, yunmu_map, ling_shengmu_map, r
             
             # 获取声母（如 u→sh、d→d、j→j、n→n）
             sm_py = sm_key_to_py.get(sm_key, sm_key)
-            # 正常映射韵母
-            ym_py = ym_key_to_py.get(ym_key, ym_key)
             
-            full_py = sm_py + ym_py
+            # 获取所有可能的韵母
+            if ym_key == 'v':
+                # 完整的v韵母映射规则 - 特殊处理
+                if sm_py in ['n', 'l', 'j', 'q', 'x']:
+                    current_possibilities = [sm_py + 'ü']
+                else:
+                    current_possibilities = [sm_py + 'ui']
+            else:
+                # 非v韵母，多值映射
+                possible_yms = ym_key_to_py.get(ym_key, [ym_key])
+                current_possibilities = [sm_py + ym for ym in possible_yms]
         # 单字符非零声母（兜底）
         else:
-            # 单字符映射
-            full_py = ym_key_to_py.get(code_item, sm_key_to_py.get(code_item, code_item))
+            # 单字符v → 默认ui
+            if code_item == 'v':
+                current_possibilities = ['ui']
+            else:
+                # 单字符可能对应多个韵母或声母
+                possible_pys = []
+                # 尝试作为韵母
+                if code_item in ym_key_to_py:
+                    possible_pys.extend(ym_key_to_py[code_item])
+                # 尝试作为声母
+                if code_item in sm_key_to_py:
+                    possible_pys.append(sm_key_to_py[code_item])
+                # 如果没有匹配，使用原字符
+                if not possible_pys:
+                    possible_pys = [code_item]
+                current_possibilities = possible_pys
         
-        # 核心修复：将解析后的全拼追加到结果列表
-        quangpin_list.append(full_py)
-
-    # 拼接全拼结果并返回
-    final_quangpin = "'".join(quangpin_list).lower()
+        # 更新所有可能的全拼组合
+        new_quangpin_lists = []
+        for existing_list in all_quangpin_lists:
+            for possibility in current_possibilities:
+                new_list = existing_list.copy()
+                new_list.append(possibility)
+                new_quangpin_lists.append(new_list)
+        all_quangpin_lists = new_quangpin_lists
+    
+    # 生成所有可能的组合字符串
+    combinations = ["'".join(py_list).lower() for py_list in all_quangpin_lists]
+    # 去重并排序
+    unique_combinations = sorted(list(set(combinations)))
+    
+    # 过滤掉不存在的全拼组合
+    filtered_combinations = []
+    for combo in unique_combinations:
+        # 检查组合是否包含被过滤的拼音
+        should_filter = False
+        # 分割组合，检查每个拼音部分
+        for py_part in combo.split("'"):
+            if py_part in filter_table:
+                should_filter = True
+                break
+        if not should_filter:
+            filtered_combinations.append(combo)
+    
+    # 拼接结果
+    if not unique_combinations or not unique_combinations[0]:
+        final_quangpin = ""
+    elif len(unique_combinations) == len(filtered_combinations):
+        # 没有过滤掉任何结果
+        final_quangpin = "/".join(unique_combinations)
+    else:
+        # 有过滤掉的结果，添加过滤信息
+        all_results = "/".join(unique_combinations)
+        filtered_results = "/".join(filtered_combinations) if filtered_combinations else all_results
+        # 分离颜色代码：只让拼音部分显示颜色，过滤信息使用默认颜色
+        final_quangpin = f"{all_results}{COLOR_RESET}【过滤掉不可能的组合】{COLOR_RED_BOLD}{filtered_results}"
+    
     return split_code, final_quangpin
 
 def reverse_convert(code_str, shengmu_map, yunmu_map, ling_shengmu_map, reverse_map):
@@ -718,31 +876,6 @@ def reverse_convert(code_str, shengmu_map, yunmu_map, ling_shengmu_map, reverse_
         print(tip_msg)
         write_history(tip_msg)
     return result
-
-def show_key_table(key_map):
-    """查表：生成键位对照表（严格按指定格式输出）"""
-    # 分离声母和韵母
-    shengmu_keys = {v: k for k, v in CURRENT_SCHEME_DATA[0].items()}  # 键位→声母
-    yunmu_keys = {v: k for k, v in CURRENT_SCHEME_DATA[1].items()}    # 键位→韵母
-    
-    # 按ABCDEFG排序的键位列表
-    sorted_keys = sorted(key_map.keys(), key=lambda x: x.upper())
-    
-    table_lines = []
-    for key in sorted_keys:
-        # 获取当前键对应的声母
-        shengmu_list = [sm for sm, k in shengmu_keys.items() if k.upper() == key.upper()]
-        shengmu_str = ''.join(shengmu_list) if shengmu_list else ''
-        
-        # 获取当前键对应的韵母
-        yunmu_list = [ym for ym, k in yunmu_keys.items() if k.upper() == key.upper()]
-        yunmu_str = ' / '.join(yunmu_list) if yunmu_list else ''
-        
-        # 拼接行（格式：X键：【声母】s【韵母】ong / iong）
-        line = f"{key}键：【声母】{shengmu_str}【韵母】{yunmu_str}"
-        table_lines.append(line)
-    
-    return "\n".join(table_lines)
 
 # ===================== 5. 辅助函数：判断输入内容类型 =====================
 def is_chinese(text):
@@ -777,7 +910,7 @@ def is_scheme_number(text):
 # ===================== 6. 新功能执行逻辑（核心修改：支持混合输入中文+双拼） =====================
 def auto_run(input_content):
     """根据输入内容自动执行对应功能（支持：切换方案、清屏、显示帮助、正查、反查、查表）"""
-    global CURRENT_SCHEME_DATA
+    global CURRENT_SCHEME_DATA, SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM, TOOL_VERSION, AUTOUPDATE_ENABLE
     
     # 写入输入内容到历史记录（标记为用户输入）
     write_history(f"用户输入：{input_content}", is_input=True)
@@ -789,10 +922,30 @@ def auto_run(input_content):
     if not input_segments:
         return True
     
-    # 处理@方案名切换逻辑
+    # 处理@命令：支持@方案名切换方案，@=数字设置为默认方案
     if input_content.strip().startswith("@") and len(input_content.strip()) > 1:
-        scheme_name = input_content.strip()[1:]
-        switch_scheme_by_name(scheme_name)
+        arg = input_content.strip()[1:]
+        
+        # 检查是否为@=数字格式
+        if arg.startswith("=") and arg[1:].isdigit():
+            scheme_num = int(arg[1:])
+            # 检查方案编号是否存在
+            if scheme_num in SCHEME_LIST:
+                # 设置为默认方案
+                if save_config(scheme_num):
+                    # 重新加载配置（已在函数开头声明为全局变量，无需再次声明）
+                    SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM, TOOL_VERSION, AUTOUPDATE_ENABLE = load_config()
+                    # 切换到该方案
+                    switch_scheme(scheme_num)
+                    print(f"✅ 已将方案 {scheme_num}（{SCHEME_LIST[scheme_num]}）设置为默认方案")
+                else:
+                    print(f"❌ 设置默认方案失败")
+            else:
+                print(f"❌ 方案编号 {scheme_num} 不存在")
+        else:
+            # 按照原逻辑处理@方案名
+            scheme_name = arg
+            switch_scheme_by_name(scheme_name)
         return True
     
     # 新增：绝对匹配输入/ → 切换到序号最小的方案
@@ -820,8 +973,8 @@ def auto_run(input_content):
         switch_to_default_scheme()
         return True
     
-    # 修改：清屏指令改为.（原*）
-    if input_content.strip() == ".":
+    # 修改：清屏指令改为.或。
+    if input_content.strip() in [".", "。"]:
         clear_screen()
         write_history("执行清屏操作")
         return True
@@ -836,7 +989,41 @@ def auto_run(input_content):
         current_num = get_current_scheme_num()
         current_info = f"{current_num} → {CURRENT_SCHEME_NAME}"
         print(f"🔖 当前双拼方案：{current_info}")
+        
+        # 添加切换方案的提示信息
+        sorted_nums = sorted(SCHEME_LIST.keys())
+        current_idx = sorted_nums.index(current_num) if current_num in sorted_nums else 0
+        
+        # 计算下一个和上一个方案
+        next_idx = (current_idx + 1) % len(sorted_nums)
+        prev_idx = (current_idx - 1) % len(sorted_nums)
+        
+        # 获取各方案的编号和名称
+        first_num = sorted_nums[0]
+        first_scheme = f"{first_num} {SCHEME_LIST[first_num]}"
+        
+        next_num = sorted_nums[next_idx]
+        next_scheme = f"{next_num} {SCHEME_LIST[next_num]}"
+        
+        prev_num = sorted_nums[prev_idx]
+        prev_scheme = f"{prev_num} {SCHEME_LIST[prev_num]}"
+        
+        last_num = sorted_nums[-1]
+        last_scheme = f"{last_num} {SCHEME_LIST[last_num]}"
+        
+        default_num = DEFAULT_SCHEME_NUM
+        default_scheme = f"{default_num} {SCHEME_LIST[default_num]}"
+        
+        # 打印提示信息
+        print()
+        print("📋 切换方案快捷操作：")
+        print(f"⏮️ 输入“/”回车 → 切换到首个方案：{first_scheme}")
+        print(f"🔽 输入“+”回车 → 切换到下一个方案：{next_scheme}")
+        print(f"🔼 输入“-”回车 → 切换到上一个方案：{prev_scheme}")
+        print(f"⏭️ 输入“\\”回车 → 切换到末个方案：{last_scheme}")
+        print(f"⭐ 输入“*”回车 → 切换到默认方案：{default_scheme}")
         print()  # 单行空行
+        
         write_history(f"显示当前方案信息：{current_info}")
         return True
     
@@ -845,22 +1032,13 @@ def auto_run(input_content):
         print_scheme_only()
         return True
     
-    # 新增：输入>清空历史记录
-    if input_content.strip() == ">":
-        history_file_exists = os.path.exists(HISTORY_FILE_PATH)
+    # 新增：输入>或》清空历史记录
+    if input_content.strip() in [">", "》"]:
         clear_history_file()
-        if history_file_exists:
-            tip_msg = "🗑️ 历史记录已清空"
-        else:
-            tip_msg = "⚠️ 注意：当前目录下无history.txt文件，已创建空文件"
+        tip_msg = "🗑️ 历史记录已清空（若不存在“history.txt”则创建空文件）"
         print(tip_msg)
         print()  # 单行空行
         write_history(tip_msg)
-        return True
-    
-    # 新增：输入&打开history.txt文件
-    if input_content.strip() == "&":
-        open_history_file()
         return True
     
     # 新增：输入%切换历史记录开关
@@ -873,8 +1051,8 @@ def auto_run(input_content):
         open_directory(ROOT_PATH)
         return True
     
-    # 新增：输入$打开method目录
-    if input_content.strip() == "$":
+    # 新增：输入$或￥打开当前method目录
+    if input_content.strip() in ["$", "￥"]:
         open_directory(METHOD_DIR)
         return True
     
@@ -895,22 +1073,40 @@ def auto_run(input_content):
             write_history(err_msg)
         return True
     
+    # 新增：输入^回车手动检查更新
+    if input_content.strip() == "^":
+        print("正在检查更新...")
+        # 获取当前版本号
+        current_version = TOOL_VERSION.lstrip('v')
+        update_info = check_update(current_version)
+        print(update_info)
+        write_history(f"手动检查更新：{update_info.strip()}")
+        return True
+    
+    # 新增：输入~回车下载最新版本
+    if input_content.strip() == "~":
+        print("正在下载最新版本...")
+        github_repo = "ChaserSu/DBInputSp"
+        # 调用下载函数，保存到当前目录
+        download_result = download_latest_version(github_repo, ROOT_PATH)
+        print(download_result)
+        write_history(f"下载最新版本：{download_result.strip()}")
+        print()  # 单行空行
+        return True
+    
+    # 新增：输入^=0或^=1回车设置启动时自动检查更新开关
+    if input_content.strip() == "^=0":
+        set_autoupdate_switch(0)
+        return True
+    elif input_content.strip() == "^=1":
+        set_autoupdate_switch(1)
+        return True
+    
     # 检查是否是方案切换指令（单个数字）
     if len(input_segments) == 1 and is_scheme_number(input_segments[0]):
         scheme_num = int(input_segments[0])
         switch_scheme(scheme_num)
         return True
-    
-    # 检查是否输入了数字0（绝对匹配）→ 查表
-    # if input_content.strip() == "0":
-    #     # 输入0显示编码表（无前置空行）
-    #     func_name = "查表"
-    #     shengmu, yunmu, ling_shengmu, key_map, reverse_map = CURRENT_SCHEME_DATA
-    #     result = show_key_table(key_map)
-    #     table_msg = f"【{CURRENT_SCHEME_NAME}编码表】\n{result}"
-    #     print(table_msg)
-    #     write_history(table_msg)
-    #     return True
     
     # 执行转换功能
     shengmu, yunmu, ling_shengmu, key_map, reverse_map = CURRENT_SCHEME_DATA
@@ -919,7 +1115,9 @@ def auto_run(input_content):
             # 片段包含中文 → 正查双拼（添加颜色加粗）
             doupin_code = forward_convert(seg, shengmu, yunmu, ling_shengmu)
             quangpin_list = chinese_to_quangpin_list(seg)
-            quangpin_str = "'".join(quangpin_list).lower()
+            # 核心修复：将全拼中的v替换为ü，保证显示规范
+            quangpin_list_corrected = [py.replace('v', 'ü') for py in quangpin_list]
+            quangpin_str = "'".join(quangpin_list_corrected).lower()
             # 核心修改：替换双拼为当前方案名
             forward_msg = f"🔎 {COLOR_BLUE_BOLD}{seg}{COLOR_RESET} {COLOR_RED_BOLD}{quangpin_str}{COLOR_RESET}【全拼 → {CURRENT_SCHEME_NAME}】{COLOR_GREEN_BOLD}{doupin_code}{COLOR_RESET}"
             print(forward_msg)
@@ -949,11 +1147,28 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 # ===================== 8. 主循环（核心修改：自动判断输入类型） =====================
-def main_loop(file_path=None):
+def main_loop(file_path=None, input_content=None):
     """程序主循环：自动根据输入类型执行功能"""
     # 注册Ctrl+C信号处理器
     signal.signal(signal.SIGINT, signal_handler)
 
+    # 初始化配置
+    global SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM, AUTOUPDATE_ENABLE, TOOL_VERSION
+    SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM, TOOL_VERSION, AUTOUPDATE_ENABLE = load_config()
+
+    # 加载默认方案
+    switch_scheme(DEFAULT_SCHEME_NUM)
+
+    # 移除了复杂的管道检测逻辑，使用命令行参数方式处理非交互式输入
+    # 这样可以确保程序在Windows下可靠启动
+    
+    # 1. 优先处理直接传入的输入内容（命令行参数）
+    if input_content:
+        # 直接处理输入内容，不进入交互式模式
+        auto_run(input_content)
+        return
+    
+    # 2. 处理文件路径参数
     if file_path:
         # 拖放文件模式：读取文件内容并自动判断执行
         try:
@@ -969,17 +1184,18 @@ def main_loop(file_path=None):
             write_history(err_msg)
         return
 
-    # 初始化配置
-    global SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM
-    SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM = load_config()
-
-    # 加载默认方案
-    switch_scheme(DEFAULT_SCHEME_NUM)
-
+    # 3. 交互式模式
     # 程序启动提示
-    start_msg = "🚀 双拼转换工具 v0.0.21（首次使用请输入“?”或“？”回车查看指南）"
+    start_msg = f"🚀 双拼转换工具 {TOOL_VERSION}（首次使用请输入“?”或“？”回车查看指南）"
     print(start_msg)
     write_history("程序启动")
+    
+    # 自动检查更新（如果配置开启）
+    if AUTOUPDATE_ENABLE == 1:
+        print("正在自动检查更新...")
+        current_version = TOOL_VERSION.lstrip('v')
+        update_info = check_update(current_version)
+        print(update_info)
 
     # 主循环
     while True:
@@ -995,8 +1211,33 @@ def main_loop(file_path=None):
 
 # 程序入口
 if __name__ == "__main__":
-    # 处理命令行参数（拖放文件）
-    if len(sys.argv) > 1:
-        main_loop(sys.argv[1])
+    # 设置输出编码为UTF-8，解决Windows下emoji输出问题
+    import sys
+    import io
+    # 将标准输出和标准错误设置为UTF-8编码
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    
+    # 处理命令行参数
+    if len(sys.argv) > 2:
+        # 多个参数：第一个是文件路径，其余是输入内容
+        file_path = sys.argv[1]
+        input_content = " ".join(sys.argv[2:])
+        # 先处理文件，再处理输入内容
+        main_loop(file_path)
+        # 调用auto_run处理输入内容
+        SCHEME_LIST, DEFAULT_SCHEME_NUM, HISTORY_ENABLE, CLRHIS_LINE_NUM, TOOL_VERSION, AUTOUPDATE_ENABLE = load_config()
+        switch_scheme(DEFAULT_SCHEME_NUM)
+        auto_run(input_content)
+    elif len(sys.argv) == 2:
+        # 单个参数：检查是文件还是输入内容
+        arg = sys.argv[1]
+        if os.path.exists(arg):
+            # 是文件路径
+            main_loop(arg)
+        else:
+            # 是输入内容，直接调用统一的main_loop函数处理
+            main_loop(None, arg)
     else:
+        # 没有命令行参数，使用原有逻辑
         main_loop()
